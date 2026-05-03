@@ -13,6 +13,9 @@ if uploaded_file:
     df = pd.read_excel(uploaded_file)
     df.columns = df.columns.str.strip()
 
+    # Normalize common variations
+    df.rename(columns={"ID": "Id"}, inplace=True)
+
     required_cols = ["Status", "Created Date", "End Date", "Dev Date"]
     missing = [col for col in required_cols if col not in df.columns]
 
@@ -85,6 +88,7 @@ if uploaded_file:
 
         tab1, tab2 = st.tabs(["📊 Dashboard", "📅 Calendar"])
 
+        # ================= DASHBOARD =================
         with tab1:
             st.subheader("📊 Key Metrics")
 
@@ -99,31 +103,29 @@ if uploaded_file:
             col6.metric("On Track", (df["Delay Status"] == "On Track").sum())
             col7.metric("Blank", (df["Delay Status"] == "").sum())
 
-        st.subheader("🔍 Filter")
+            st.subheader("🔍 Filter")
 
-col1, col2 = st.columns(2)
+            colA, colB = st.columns(2)
 
-status_filter = col1.multiselect(
-    "Select Status",
-    options=df["Delay Status"].dropna().unique(),
-    default=df["Delay Status"].dropna().unique()
-)
+            status_filter = colA.multiselect(
+                "Select Status",
+                options=df["Delay Status"].dropna().unique(),
+                default=df["Delay Status"].dropna().unique()
+            )
 
-# Safe check for Tester column
-if "Tester" in df.columns:
-    tester_filter = col2.multiselect(
-        "Select Tester",
-        options=df["Tester"].dropna().unique(),
-        default=df["Tester"].dropna().unique()
-    )
-else:
-    tester_filter = None
+            if "Tester" in df.columns:
+                tester_filter = colB.multiselect(
+                    "Select Tester",
+                    options=df["Tester"].dropna().unique(),
+                    default=df["Tester"].dropna().unique()
+                )
+            else:
+                tester_filter = None
 
-# Apply filters
-filtered_df = df[df["Delay Status"].isin(status_filter)]
+            filtered_df = df[df["Delay Status"].isin(status_filter)]
 
-if tester_filter is not None:
-    filtered_df = filtered_df[filtered_df["Tester"].isin(tester_filter)]
+            if tester_filter is not None:
+                filtered_df = filtered_df[filtered_df["Tester"].isin(tester_filter)]
 
             def highlight_status(row):
                 status = row["Delay Status"]
@@ -141,6 +143,7 @@ if tester_filter is not None:
                     return [""] * len(row)
 
             styled_df = filtered_df.style.apply(highlight_status, axis=1)
+
             st.subheader("📋 Detailed Data")
             st.write(styled_df)
 
@@ -151,6 +154,7 @@ if tester_filter is not None:
                 mime="text/csv"
             )
 
+        # ================= CALENDAR =================
         with tab2:
             st.subheader("📅 Smart Calendar")
 
@@ -168,6 +172,16 @@ if tester_filter is not None:
             )
 
             filtered_cal_df = df[df["Delay Status"].isin(status_filter_cal)]
+
+            if "Tester" in df.columns:
+                tester_filter_cal = st.multiselect(
+                    "Filter Tester",
+                    options=df["Tester"].dropna().unique(),
+                    default=df["Tester"].dropna().unique()
+                )
+                filtered_cal_df = filtered_cal_df[
+                    filtered_cal_df["Tester"].isin(tester_filter_cal)
+                ]
 
             events = []
 
