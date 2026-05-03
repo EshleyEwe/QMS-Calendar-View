@@ -183,7 +183,7 @@ if uploaded_file:
                     }.get(status, "#cccccc")
 
                     events.append({
-                        "title": f"{row.get('ID', 'No ID')} | {row.get('Status')} | {status}",
+                        "title": f"{row.get('Id', 'No Id')} | {row.get('Status')} | {status}",
                         "start": event_date.strftime("%Y-%m-%d"),
                         "color": color,
                         "extendedProps": {
@@ -208,7 +208,7 @@ if uploaded_file:
                 event = cal_data["eventClick"]["event"]
                 details = event.get("extendedProps", {})
 
-                st.write(f"### ID: {details.get('ID')}")
+                st.write(f"### Id: {details.get('Id')}")
                 st.write(f"Status: {details.get('Status')}")
                 st.write(f"Delay Status: {details.get('Delay Status')}")
 
