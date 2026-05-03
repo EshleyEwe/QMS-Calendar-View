@@ -99,13 +99,31 @@ if uploaded_file:
             col6.metric("On Track", (df["Delay Status"] == "On Track").sum())
             col7.metric("Blank", (df["Delay Status"] == "").sum())
 
-            status_filter = st.multiselect(
-                "Select Status",
-                options=df["Delay Status"].unique(),
-                default=df["Delay Status"].unique()
-            )
+        st.subheader("🔍 Filter")
 
-            filtered_df = df[df["Delay Status"].isin(status_filter)]
+col1, col2 = st.columns(2)
+
+status_filter = col1.multiselect(
+    "Select Status",
+    options=df["Delay Status"].dropna().unique(),
+    default=df["Delay Status"].dropna().unique()
+)
+
+# Safe check for Tester column
+if "Tester" in df.columns:
+    tester_filter = col2.multiselect(
+        "Select Tester",
+        options=df["Tester"].dropna().unique(),
+        default=df["Tester"].dropna().unique()
+    )
+else:
+    tester_filter = None
+
+# Apply filters
+filtered_df = df[df["Delay Status"].isin(status_filter)]
+
+if tester_filter is not None:
+    filtered_df = filtered_df[filtered_df["Tester"].isin(tester_filter)]
 
             def highlight_status(row):
                 status = row["Delay Status"]
