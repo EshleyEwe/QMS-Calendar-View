@@ -13,7 +13,6 @@ if uploaded_file:
     df = pd.read_excel(uploaded_file)
     df.columns = df.columns.str.strip()
 
-    # Normalize common variations
     df.rename(columns={"ID": "Id"}, inplace=True)
 
     required_cols = ["Status", "Created Date", "End Date", "Dev Date"]
@@ -57,195 +56,75 @@ if uploaded_file:
 
         df["Delay Status"] = df.apply(get_status, axis=1)
 
-        def calc_days(row):
-            end = row.get("End Date")
-            dev = row.get("Dev Date")
-
-            if row["Delay Status"] == "Overdue" and pd.notna(end):
-                return (today - end).days
-
-            if row["Delay Status"] == "Late" and pd.notna(dev):
-                return (today - dev).days
-
-            if pd.notna(dev):
-                return (dev - today).days
-
-            return None
-
-        df["Days"] = df.apply(calc_days, axis=1)
-
-        priority_order = {
-            "Overdue": 1,
-            "Late": 2,
-            "Issue": 3,
-            "On Time": 4,
-            "On Track": 5,
-            "": 6
-        }
-
-        df["Priority"] = df["Delay Status"].map(priority_order)
-        df = df.sort_values(by=["Priority", "Days"], ascending=[True, False])
+        df["Days"] = df.apply(lambda r: (today - r["End Date"]).days if r["Delay Status"]=="Overdue" and pd.notna(r["End Date"]) else
+                                         (today - r["Dev Date"]).days if r["Delay Status"]=="Late" and pd.notna(r["Dev Date"]) else
+                                         (r["Dev Date"] - today).days if pd.notna(r["Dev Date"]) else None, axis=1)
 
         tab1, tab2 = st.tabs(["📊 Dashboard", "📅 Calendar"])
 
-        # ================= DASHBOARD =================
         with tab1:
-            st.subheader("📊 Key Metrics")
+            st.subheader("📊 Key Metrics (Click to filter)")
 
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Total", len(df))
-            col2.metric("Overdue ❌", (df["Delay Status"] == "Overdue").sum())
-            col3.metric("Late ⚠️", (df["Delay Status"] == "Late").sum())
-            col4.metric("Issue 🔵", (df["Delay Status"] == "Issue").sum())
+            overdue_df = df[df["Delay Status"]=="Overdue"]
+            late_df = df[df["Delay Status"]=="Late"]
+            issue_df = df[df["Delay Status"]=="Issue"]
+            ontime_df = df[df["Delay Status"]=="On Time"]
+            ontrack_df = df[df["Delay Status"]=="On Track"]
 
-            col5, col6, col7 = st.columns(3)
-            col5.metric("On Time ✅", (df["Delay Status"] == "On Time").sum())
-            col6.metric("On Track", (df["Delay Status"] == "On Track").sum())
-            col7.metric("Blank", (df["Delay Status"] == "").sum())
+            c1,c2,c3,c4 = st.columns(4)
+            c1.metric("Total", len(df))
+            c2.metric("Overdue ❌", len(overdue_df))
+            c3.metric("Late ⚠️", len(late_df))
+            c4.metric("Issue 🔵", len(issue_df))
 
-            st.subheader("🔍 Filter")
+            c5,c6,c7 = st.columns(3)
+            c5.metric("On Time ✅", len(ontime_df))
+            c6.metric("On Track", len(ontrack_df))
+            c7.metric("Blank", (df["Delay Status"]=="").sum())
 
-            colA, colB = st.columns(2)
+            st.subheader("🎯 Quick Filter")
+            b1,b2,b3,b4,b5,b6 = st.columns(6)
 
-            status_filter = colA.multiselect(
-                "Select Status",
-                options=df["Delay Status"].dropna().unique(),
-                default=df["Delay Status"].dropna().unique()
-            )
+            selected_df = df
+            label = "All Data"
+
+            if b1.button("Total"):
+                selected_df = df
+                label = "All Data"
+            if b2.button("Overdue"):
+                selected_df = overdue_df
+                label = "Overdue"
+            if b3.button("Late"):
+                selected_df = late_df
+                label = "Late"
+            if b4.button("Issue"):
+                selected_df = issue_df
+                label = "Issue"
+            if b5.button("On Time"):
+                selected_df = ontime_df
+                label = "On Time"
+            if b6.button("On Track"):
+                selected_df = ontrack_df
+                label = "On Track"
+
+            st.subheader(f"📋 Showing: {label}")
 
             if "Tester" in df.columns:
-                tester_filter = colB.multiselect(
-                    "Select Tester",
-                    options=df["Tester"].dropna().unique(),
-                    default=df["Tester"].dropna().unique()
-                )
-            else:
-                tester_filter = None
+                tester_filter = st.multiselect("Filter Tester", df["Tester"].dropna().unique(), default=df["Tester"].dropna().unique())
+                selected_df = selected_df[selected_df["Tester"].isin(tester_filter)]
 
-            filtered_df = df[df["Delay Status"].isin(status_filter)]
+            st.dataframe(selected_df, use_container_width=True)
 
-            if tester_filter is not None:
-                filtered_df = filtered_df[filtered_df["Tester"].isin(tester_filter)]
-
-            def highlight_status(row):
-                status = row["Delay Status"]
-                if status == "Overdue":
-                    return ["background-color: #ff4d4d"] * len(row)
-                elif status == "Late":
-                    return ["background-color: #ffa64d"] * len(row)
-                elif status == "Issue":
-                    return ["background-color: #66ccff"] * len(row)
-                elif status == "On Time":
-                    return ["background-color: #85e085"] * len(row)
-                elif status == "":
-                    return ["background-color: #f2f2f2"] * len(row)
-                else:
-                    return [""] * len(row)
-
-            styled_df = filtered_df.style.apply(highlight_status, axis=1)
-
-            st.subheader("📋 Detailed Data")
-            st.write(styled_df)
-
-            st.download_button(
-                "⬇️ Download Result",
-                filtered_df.to_csv(index=False),
-                file_name="delay_result.csv",
-                mime="text/csv"
-            )
-
-        # ================= CALENDAR =================
         with tab2:
-            st.subheader("📅 Smart Calendar")
+            st.subheader("📅 Calendar")
 
-            col1, col2 = st.columns(2)
-
-            date_source = col1.selectbox(
-                "Select Date Source",
-                ["Auto", "Dev Date", "End Date", "Created Date"]
-            )
-
-            status_filter_cal = col2.multiselect(
-                "Filter Status",
-                options=df["Delay Status"].unique(),
-                default=df["Delay Status"].unique()
-            )
-
-            filtered_cal_df = df[df["Delay Status"].isin(status_filter_cal)]
-
-            if "Tester" in df.columns:
-                tester_filter_cal = st.multiselect(
-                    "Filter Tester",
-                    options=df["Tester"].dropna().unique(),
-                    default=df["Tester"].dropna().unique()
-                )
-                filtered_cal_df = filtered_cal_df[
-                    filtered_cal_df["Tester"].isin(tester_filter_cal)
-                ]
-
-            events = []
-
-            for _, row in filtered_cal_df.iterrows():
-                event_date = None
-
-                if date_source == "Dev Date" and pd.notna(row.get("Dev Date")):
-                    event_date = row["Dev Date"]
-                elif date_source == "End Date" and pd.notna(row.get("End Date")):
-                    event_date = row["End Date"]
-                elif date_source == "Created Date" and pd.notna(row.get("Created Date")):
-                    event_date = row["Created Date"]
-                elif date_source == "Auto":
-                    if pd.notna(row.get("Dev Date")):
-                        event_date = row["Dev Date"]
-                    elif pd.notna(row.get("End Date")):
-                        event_date = row["End Date"]
-                    elif pd.notna(row.get("Created Date")):
-                        event_date = row["Created Date"]
-
-                if event_date is not None:
-                    status = row["Delay Status"]
-
-                    color = {
-                        "Overdue": "#ff4d4d",
-                        "Late": "#ffa64d",
-                        "Issue": "#66ccff",
-                        "On Time": "#85e085",
-                        "On Track": "#cccccc",
-                        "": "#f2f2f2"
-                    }.get(status, "#cccccc")
-
+            events=[]
+            for _,row in df.iterrows():
+                if pd.notna(row.get("Dev Date")):
                     events.append({
-                        "title": f"{row.get('Id', 'No Id')} | {row.get('Status')} | {status}",
-                        "start": event_date.strftime("%Y-%m-%d"),
-                        "color": color,
-                        "extendedProps": {
-                            k: str(v) if pd.notna(v) else ""
-                            for k, v in row.to_dict().items()
-                        }
+                        "title": f"{row.get('Id','No Id')} | {row.get('Status')}",
+                        "start": row["Dev Date"].strftime("%Y-%m-%d"),
+                        "extendedProps": {k:str(v) for k,v in row.to_dict().items()}
                     })
 
-            min_date = None
-            if len(events) > 0:
-                min_date = min([e["start"] for e in events])
-
-            options = {"initialView": "dayGridMonth", "height": 700}
-            if min_date:
-                options["initialDate"] = min_date
-
-            cal_data = calendar(events=events, options=options)
-
-            st.subheader("📌 Selected Item Details")
-
-            if cal_data and "eventClick" in cal_data:
-                event = cal_data["eventClick"]["event"]
-                details = event.get("extendedProps", {})
-
-                st.write(f"### Id: {details.get('Id')}")
-                st.write(f"Status: {details.get('Status')}")
-                st.write(f"Delay Status: {details.get('Delay Status')}")
-
-                with st.expander("🔍 View Full Details", expanded=True):
-                    details_df = pd.DataFrame(details.items(), columns=["Field", "Value"])
-                    st.dataframe(details_df, use_container_width=True)
-            else:
-                st.info("Click an event to view full details.")
+            calendar(events=events, options={"initialView":"dayGridMonth"})
