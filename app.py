@@ -3,128 +3,156 @@ import pandas as pd
 from datetime import datetime
 from streamlit_calendar import calendar
 
-st.set_page_config(page_title="Delay Tracker", layout="wide")
+st.set_page_config(page_title="Delay Tracker Ultimate", layout="wide")
+st.title("🚀 Delay Tracker Ultimate (Dashboard + Smart Calendar)")
 
-st.title("📊 Delay & Smart Calendar Tracker")
+file = st.file_uploader("📂 Upload Excel file", type=["xlsx"])
 
-uploaded_file = st.file_uploader("📂 Upload Excel file", type=["xlsx"])
+if file:
+    df = pd.read_excel(file)
+    df.columns = df.columns.str.strip().str.title()
 
-if uploaded_file:
-    df = pd.read_excel(uploaded_file)
-    df.columns = df.columns.str.strip()
+    df.rename(columns={"Id": "Id", "ID": "Id"}, inplace=True)
 
-    df.rename(columns={"ID": "Id"}, inplace=True)
-
-    required_cols = ["Status", "Created Date", "End Date", "Dev Date"]
-    missing = [col for col in required_cols if col not in df.columns]
+    required = ["Status","Created Date","End Date","Dev Date"]
+    missing = [c for c in required if c not in df.columns]
 
     if missing:
-        st.error(f"Missing required columns: {missing}")
-    else:
-        for col in required_cols:
-            if "Date" in col:
-                df[col] = pd.to_datetime(df[col], errors='coerce')
+        st.error(f"Missing columns: {missing}")
+        st.stop()
 
-        today = pd.to_datetime(datetime.today().date())
+    for c in required:
+        df[c] = pd.to_datetime(df[c], errors="coerce")
 
-        def get_status(row):
-            status = row.get("Status")
-            created = row.get("Created Date")
-            end = row.get("End Date")
-            dev = row.get("Dev Date")
+    today = pd.to_datetime(datetime.today().date())
 
-            if status == "Develop":
-                if pd.isna(end) and pd.notna(created):
-                    if created + pd.Timedelta(days=14) < today:
-                        return "Issue"
-                    else:
-                        return ""
+    def get_status(r):
+        s=r.get("Status")
+        c=r.get("Created Date")
+        e=r.get("End Date")
+        d=r.get("Dev Date")
 
-            if status == "Develop" and pd.notna(end):
-                if today > end:
-                    return "Overdue"
+        if s=="Develop":
+            if pd.isna(e) and pd.notna(c):
+                if c+pd.Timedelta(days=14)<today:
+                    return "Issue"
+                else:
+                    return ""
 
-            if status == "Develop" and pd.notna(dev):
-                if today > dev:
-                    return "Late"
+        if s=="Develop" and pd.notna(e):
+            if today>e:
+                return "Overdue"
 
-            if status in ["Testing", "Verify"] and pd.notna(dev):
-                if dev >= today:
-                    return "On Time"
+        if s=="Develop" and pd.notna(d):
+            if today>d:
+                return "Late"
 
-            return "On Track"
+        if s in ["Testing","Verify"] and pd.notna(d):
+            if d>=today:
+                return "On Time"
 
-        df["Delay Status"] = df.apply(get_status, axis=1)
+        return "On Track"
 
-        df["Days"] = df.apply(lambda r: (today - r["End Date"]).days if r["Delay Status"]=="Overdue" and pd.notna(r["End Date"]) else
-                                         (today - r["Dev Date"]).days if r["Delay Status"]=="Late" and pd.notna(r["Dev Date"]) else
-                                         (r["Dev Date"] - today).days if pd.notna(r["Dev Date"]) else None, axis=1)
+    df["Delay Status"]=df.apply(get_status,axis=1)
 
-        tab1, tab2 = st.tabs(["📊 Dashboard", "📅 Calendar"])
+    def calc_days(r):
+        if r["Delay Status"]=="Overdue" and pd.notna(r["End Date"]):
+            return (today-r["End Date"]).days
+        if r["Delay Status"]=="Late" and pd.notna(r["Dev Date"]):
+            return (today-r["Dev Date"]).days
+        if pd.notna(r["Dev Date"]):
+            return (r["Dev Date"]-today).days
+        return None
 
-        with tab1:
-            st.subheader("📊 Key Metrics (Click to filter)")
+    df["Days"]=df.apply(calc_days,axis=1)
 
-            overdue_df = df[df["Delay Status"]=="Overdue"]
-            late_df = df[df["Delay Status"]=="Late"]
-            issue_df = df[df["Delay Status"]=="Issue"]
-            ontime_df = df[df["Delay Status"]=="On Time"]
-            ontrack_df = df[df["Delay Status"]=="On Track"]
+    tab1,tab2=st.tabs(["📊 Dashboard","📅 Calendar"])
 
-            c1,c2,c3,c4 = st.columns(4)
-            c1.metric("Total", len(df))
-            c2.metric("Overdue ❌", len(overdue_df))
-            c3.metric("Late ⚠️", len(late_df))
-            c4.metric("Issue 🔵", len(issue_df))
+    # DASHBOARD
+    with tab1:
+        st.subheader("📊 KPI (Click to filter)")
 
-            c5,c6,c7 = st.columns(3)
-            c5.metric("On Time ✅", len(ontime_df))
-            c6.metric("On Track", len(ontrack_df))
-            c7.metric("Blank", (df["Delay Status"]=="").sum())
+        overdue=df[df["Delay Status"]=="Overdue"]
+        late=df[df["Delay Status"]=="Late"]
+        issue=df[df["Delay Status"]=="Issue"]
+        ontime=df[df["Delay Status"]=="On Time"]
+        ontrack=df[df["Delay Status"]=="On Track"]
 
-            st.subheader("🎯 Quick Filter")
-            b1,b2,b3,b4,b5,b6 = st.columns(6)
+        c1,c2,c3,c4=st.columns(4)
+        c1.metric("Total",len(df))
+        c2.metric("Overdue",len(overdue))
+        c3.metric("Late",len(late))
+        c4.metric("Issue",len(issue))
 
-            selected_df = df
-            label = "All Data"
+        c5,c6,c7=st.columns(3)
+        c5.metric("On Time",len(ontime))
+        c6.metric("On Track",len(ontrack))
+        c7.metric("Blank",(df["Delay Status"]=="").sum())
 
-            if b1.button("Total"):
-                selected_df = df
-                label = "All Data"
-            if b2.button("Overdue"):
-                selected_df = overdue_df
-                label = "Overdue"
-            if b3.button("Late"):
-                selected_df = late_df
-                label = "Late"
-            if b4.button("Issue"):
-                selected_df = issue_df
-                label = "Issue"
-            if b5.button("On Time"):
-                selected_df = ontime_df
-                label = "On Time"
-            if b6.button("On Track"):
-                selected_df = ontrack_df
-                label = "On Track"
+        st.subheader("🎯 Quick Filter")
+        b1,b2,b3,b4,b5,b6=st.columns(6)
 
-            st.subheader(f"📋 Showing: {label}")
+        selected=df
+        label="All"
 
-            if "Tester" in df.columns:
-                tester_filter = st.multiselect("Filter Tester", df["Tester"].dropna().unique(), default=df["Tester"].dropna().unique())
-                selected_df = selected_df[selected_df["Tester"].isin(tester_filter)]
+        if b1.button("Total"): selected,label=df,"All"
+        if b2.button("Overdue"): selected,label=overdue,"Overdue"
+        if b3.button("Late"): selected,label=late,"Late"
+        if b4.button("Issue"): selected,label=issue,"Issue"
+        if b5.button("On Time"): selected,label=ontime,"On Time"
+        if b6.button("On Track"): selected,label=ontrack,"On Track"
 
-            st.dataframe(selected_df, use_container_width=True)
+        if "Tester" in df.columns:
+            tester=st.multiselect("Filter Tester",
+                                 df["Tester"].dropna().unique(),
+                                 default=df["Tester"].dropna().unique())
+            selected=selected[selected["Tester"].isin(tester)]
 
-        with tab2:
-            st.subheader("📅 Calendar")
+        st.subheader(f"📋 Showing: {label}")
+        st.dataframe(selected, use_container_width=True)
 
-            events=[]
-            for _,row in df.iterrows():
-                if pd.notna(row.get("Dev Date")):
-                    events.append({
-                        "title": f"{row.get('Id','No Id')} | {row.get('Status')}",
-                        "start": row["Dev Date"].strftime("%Y-%m-%d"),
-                        "extendedProps": {k:str(v) for k,v in row.to_dict().items()}
-                    })
+    # CALENDAR
+    with tab2:
+        st.subheader("📅 Smart Calendar (Never Empty)")
 
-            calendar(events=events, options={"initialView":"dayGridMonth"})
+        date_mode=st.selectbox("Date Source",
+                              ["Auto","Dev Date","End Date","Created Date"])
+
+        events=[]
+        for _,r in df.iterrows():
+            d=None
+
+            if date_mode=="Dev Date" and pd.notna(r["Dev Date"]):
+                d=r["Dev Date"]
+            elif date_mode=="End Date" and pd.notna(r["End Date"]):
+                d=r["End Date"]
+            elif date_mode=="Created Date" and pd.notna(r["Created Date"]):
+                d=r["Created Date"]
+            elif date_mode=="Auto":
+                if pd.notna(r["Dev Date"]):
+                    d=r["Dev Date"]
+                elif pd.notna(r["End Date"]):
+                    d=r["End Date"]
+                elif pd.notna(r["Created Date"]):
+                    d=r["Created Date"]
+
+            if d is not None:
+                events.append({
+                    "title": f"{r.get('Id','No Id')} | {r.get('Status')}",
+                    "start": d.strftime("%Y-%m-%d"),
+                    "extendedProps": {k:str(v) if pd.notna(v) else "" for k,v in r.to_dict().items()}
+                })
+
+        st.write(f"Events: {len(events)}")
+
+        if not events:
+            st.warning("No calendar data - check dates")
+        else:
+            cal=calendar(events=events, options={"initialView":"dayGridMonth","height":700})
+
+            if cal and "eventClick" in cal:
+                e=cal["eventClick"]["event"]
+                st.subheader("📌 Details")
+                with st.expander("View Full Details", True):
+                    df_detail=pd.DataFrame(e["extendedProps"].items(), columns=["Field","Value"])
+                    st.dataframe(df_detail, use_container_width=True)
